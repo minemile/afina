@@ -4,6 +4,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <condition_variable>
 
 #include "SimpleLRU.h"
 
@@ -23,35 +24,41 @@ public:
     // see SimpleLRU.h
     bool Put(const std::string &key, const std::string &value) override {
         // TODO: sinchronization
+        std::lock_guard<std::mutex> lck(_mt);
         return SimpleLRU::Put(key, value);
     }
 
     // see SimpleLRU.h
     bool PutIfAbsent(const std::string &key, const std::string &value) override {
         // TODO: sinchronization
+        std::lock_guard<std::mutex> lck(_mt);
         return SimpleLRU::PutIfAbsent(key, value);
     }
 
     // see SimpleLRU.h
     bool Set(const std::string &key, const std::string &value) override {
         // TODO: sinchronization
+        std::lock_guard<std::mutex> lck(_mt);
         return SimpleLRU::Set(key, value);
     }
 
     // see SimpleLRU.h
     bool Delete(const std::string &key) override {
         // TODO: sinchronization
+        std::lock_guard<std::mutex> lck(_mt);
         return SimpleLRU::Delete(key);
     }
 
     // see SimpleLRU.h
     bool Get(const std::string &key, std::string &value) const override {
         // TODO: sinchronization
+        std::lock_guard<std::mutex> lck(_mt);
         return SimpleLRU::Get(key, value);
     }
 
 private:
     // TODO: sinchronization primitives
+    mutable std::mutex _mt;
 };
 
 } // namespace Backend
