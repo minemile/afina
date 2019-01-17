@@ -86,7 +86,6 @@ void ServerImpl::Start(uint16_t port, uint32_t n_acceptors, uint32_t n_workers) 
 // See Server.h
 void ServerImpl::Stop() {
     _logger->warn("Stop network service");
-
     // Wakeup threads that are sleep on epoll_wait
     if (eventfd_write(_event_fd, 1)) {
         throw std::runtime_error("Failed to wakeup workers");
@@ -97,6 +96,10 @@ void ServerImpl::Stop() {
 void ServerImpl::Join() {
     // Wait for work to be complete
     _work_thread.join();
+    if (close(_server_socket) < 0) {
+        _logger->error("Failed to close server socket: " + std::string(strerror(errno)));
+    }
+    _logger->warn("Server stopped");
 }
 
 // See ServerImpl.h
@@ -144,8 +147,10 @@ void ServerImpl::OnRun() {
             auto old_mask = pc->_event.events;
             if ((current_event.events & EPOLLERR) || (current_event.events & EPOLLHUP)) {
                 pc->OnError();
+                //_conns.erase(pc);
             } else if (current_event.events & EPOLLRDHUP) {
                 pc->OnClose();
+                //_conns.erase(pc);
             } else {
                 // Depends on what connection wants...
                 if (current_event.events & EPOLLIN) {
@@ -161,23 +166,32 @@ void ServerImpl::OnRun() {
                 if (epoll_ctl(epoll_descr, EPOLL_CTL_DEL, pc->_socket, &pc->_event)) {
                     _logger->error("Failed to delete connection from epoll");
                 }
-
                 close(pc->_socket);
                 pc->OnClose();
-
+                _conns.erase(pc);
                 delete pc;
             } else if (pc->_event.events != old_mask) {
                 if (epoll_ctl(epoll_descr, EPOLL_CTL_MOD, pc->_socket, &pc->_event)) {
                     _logger->error("Failed to change connection event mask");
+                    _logger->error("LOL");
+
+                    close(pc->_socket);
+                    pc->OnClose();
+                    _conns.erase(pc);
+                    delete pc;
                 }
-
-                close(pc->_socket);
-                pc->OnClose();
-
-                delete pc;
             }
         }
     }
+
+    _logger->debug("Clean up {} connections", _conns.size());
+    for (auto con : _conns) {
+        close(con->_socket);
+        con->OnClose();
+        delete con;
+    }
+    _conns.clear();
+    close(epoll_descr);
     _logger->warn("Acceptor stopped");
 }
 
@@ -207,18 +221,21 @@ void ServerImpl::OnNewConnection(int epoll_descr) {
         }
 
         // Register the new FD to be monitored by epoll.
-        Connection *pc = new Connection(infd);
+        Connection *pc = new Connection(infd, pStorage, _logger);
         if (pc == nullptr) {
             throw std::runtime_error("Failed to allocate connection");
         }
+        _conns.insert(pc);
 
         // Register connection in worker's epoll
         pc->Start();
         if (pc->isAlive()) {
             if (epoll_ctl(epoll_descr, EPOLL_CTL_ADD, pc->_socket, &pc->_event)) {
+                _logger->error("Failed to add file descriptor to epoll");
                 pc->OnError();
                 delete pc;
             }
+            _logger->debug("WAKEUP??? {}", epoll_descr);
         }
     }
 }
