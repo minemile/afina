@@ -96,7 +96,7 @@ void ServerImpl::Start(uint16_t port, uint32_t n_acceptors, uint32_t n_workers) 
 
     _workers.reserve(n_workers);
     for (int i = 0; i < n_workers; i++) {
-        _workers.emplace_back(pStorage, pLogging);
+        _workers.emplace_back(pStorage, pLogging, _conns);
         _workers.back().Start(_data_epoll_fd);
     }
 
@@ -119,6 +119,14 @@ void ServerImpl::Stop() {
     if (eventfd_write(_event_fd, 1)) {
         throw std::runtime_error("Failed to wakeup workers");
     }
+
+    _logger->debug("Clean up {} connections", _conns.size());
+    for (auto con : _conns) {
+        close(con->_socket);
+        con->OnClose();
+        delete con;
+    }
+    _conns.clear();
 }
 
 // See Server.h
@@ -193,17 +201,21 @@ void ServerImpl::OnRun() {
                 }
 
                 // Register the new FD to be monitored by epoll.
-                Connection *pc = new Connection(infd);
+                Connection *pc = new Connection(infd, pStorage, _logger);
+
                 if (pc == nullptr) {
                     throw std::runtime_error("Failed to allocate connection");
                 }
-
+                _conns.insert(pc);
                 // Register connection in worker's epoll
                 pc->Start();
                 if (pc->isAlive()) {
                     pc->_event.events |= EPOLLONESHOT;
-                    if (epoll_ctl(_data_epoll_fd, EPOLL_CTL_MOD, pc->_socket, &pc->_event)) {
+                    if (epoll_ctl(_data_epoll_fd, EPOLL_CTL_ADD, pc->_socket, &pc->_event)) {
+                        _logger->error("Can't register connection in worker's epoll");
                         pc->OnError();
+                        close(pc->_socket);
+                        _conns.erase(pc);
                         delete pc;
                     }
                 }

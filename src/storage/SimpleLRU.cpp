@@ -100,6 +100,7 @@ bool SimpleLRU::Delete(const std::string &key) {
     if (it == _lru_index.end()) {
         return false;
     }
+    _cur_size -= key.size() + it->second.get().value.size();
     _lru_index.erase(key);
     return true;
 }
