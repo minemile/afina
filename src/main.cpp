@@ -15,6 +15,7 @@
 #include <afina/network/Server.h>
 
 #include "logging/ServiceImpl.h"
+#include "network/coroutine/ServerImpl.h"
 #include "network/mt_blocking/ServerImpl.h"
 #include "network/mt_nonblocking/ServerImpl.h"
 #include "network/st_blocking/ServerImpl.h"
@@ -39,7 +40,7 @@ public:
         console.color = true;
 
         Logging::Logger &logger = logConfig->loggers["root"];
-        logger.level = Logging::Logger::Level::WARNING;
+        logger.level = Logging::Logger::Level::TRACE;
         logger.appenders.push_back("console");
         logger.format = "[%H:%M:%S %z] [thread %t] [%n] [%l] %v";
         logService.reset(new Logging::ServiceImpl(logConfig));
@@ -72,6 +73,8 @@ public:
             server = std::make_shared<Afina::Network::STnonblock::ServerImpl>(storage, logService);
         } else if (network_type == "mt_nonblock") {
             server = std::make_shared<Afina::Network::MTnonblock::ServerImpl>(storage, logService);
+        } else if (network_type == "coroutine") {
+            server = std::make_shared<Afina::Network::Coroutine::ServerImpl>(storage, logService);
         } else {
             throw std::runtime_error("Unknown network type");
         }

@@ -9,16 +9,6 @@
 namespace Afina {
 namespace Coroutine {
 
-void func(int *p) {
-    int i;
-    if (!p)
-        func(&i);
-    else if (p < &i)
-        printf("Stack grows upward\n");
-    else
-        printf("Stack grows downward\n");
-}
-
 void Engine::Store(context &ctx) {
     char current_address;
     ctx.Low = std::min(&current_address, StackBottom);
